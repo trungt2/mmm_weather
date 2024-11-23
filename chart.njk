@@ -1,0 +1,33 @@
+{% if chartData %}
+  <div id="weather-chart" style="display:block;">
+    <canvas id="weatherChart"></canvas>
+  </div>
+{% endif %}
+
+<script>
+  const ctx = document.getElementById('weatherChart').getContext('2d');
+  const weatherChart = new Chart(ctx, {
+    type: 'line',  // Loại biểu đồ: line
+    data: {
+      labels: {{ chartData.labels | safe }},
+      datasets: {{ chartData.datasets | safe }}
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Time'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Temperature (°C)'
+          }
+        }
+      }
+    }
+  });
+</script>
