@@ -41,7 +41,8 @@ Module.register("weather", {
 		colored: false,
 		absoluteDates: false,
 		hourlyForecastIncrements: 1,
-		
+
+		chartType: "line",
 		chartjsVersion: "3.9.1"
 	},
 
@@ -57,13 +58,17 @@ Module.register("weather", {
 			fill: false
 		}]
 	},
+	chartVisible: false,
+	showChart: true,
+	chart: null,
+	current_state: "hourly",
 
 	// Can be used by the provider to display location of event if nothing else is specified
 	firstEvent: null,
 
 	// Define required scripts.
 	getStyles () {
-		return ["font-awesome.css", "weather-icons.css", "weather.css"];
+		return ["font-awesome.css", "weather-icons.css", "weather.css", "chart.css"];
 	},
 
 	// Return the scripts that are necessary for the weather module.
@@ -73,13 +78,7 @@ Module.register("weather", {
             chartjsFileName = "Chart.min.js"
         }
 
-		return ["https://cdn.jsdelivr.net/npm/chart.js@" +
-                this.config.chartjsVersion +
-                "/dist/" +
-                chartjsFileName,
-            "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@" +
-                this.config.chartjsDatalabelsVersion +
-                "/dist/chartjs-plugin-datalabels.min.js",
+		return ["https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js",
 			"moment.js", "weatherutils.js", "weatherobject.js", this.file("providers/overrideWrapper.js"), "weatherprovider.js", "suncalc.js", this.file(`providers/${this.config.weatherProvider.toLowerCase()}.js`)];
 	},
 
@@ -120,7 +119,64 @@ Module.register("weather", {
 
 		// Schedule the first update.
 		this.scheduleUpdate(this.config.initialLoadDelay);
+
+		this.chartVisible = false;
+		this.createCanvas();
+
+		console.log("showchart: ", this.showChart);
 	},
+
+	createCanvas: function () {
+        // Remove existing canvas if present
+        const existingCanvas = document.getElementById("weatherChart");
+        if (existingCanvas) existingCanvas.remove();
+
+        const canvas = document.createElement("canvas");
+        canvas.id = "weatherChart";
+        canvas.style.width = "100%";
+    	canvas.style.height = "100%";
+
+        const wrapper = document.getElementById("chartWrapper") || document.createElement("div");
+        wrapper.id = "chartWrapper";
+        wrapper.innerHTML = ""; // Clear any existing content
+
+		wrapper.style.position = "fixed";
+		wrapper.style.top = "0";
+		wrapper.style.left = "0";
+		wrapper.style.width = "100vw"; // Full viewport width
+		wrapper.style.height = "100vh"; // Full viewport height
+		wrapper.style.display = "none"; // Initially hidden
+		wrapper.style.zIndex = "1000"; // To be on top of other content
+
+        wrapper.appendChild(canvas);
+
+        // Initially hide the wrapper
+        wrapper.style.display = "none";
+
+        document.body.appendChild(wrapper);
+    },
+
+	drawChart: function () {
+        const ctx = document.getElementById("weatherChart").getContext("2d");
+
+        if (this.chart) {
+            // If chart exists, update its data
+            this.chart.data = this.chartData;
+            this.chart.update();
+        } else {
+            // Create a new chart if it doesn't exist
+            this.chart = new Chart(ctx, {
+                type: this.config.chartType, // Chart type (line or bar)
+                data: this.chartData, // Data
+                options: {
+                    legend: {display: true},
+					scales: {
+					yAxes: [{ticks: {min: -5, max:16}}],
+					}
+                },
+            });
+        }
+    },
 
 	// Override notification handler.
 	notificationReceived (notification, payload, sender) {
@@ -144,18 +200,44 @@ Module.register("weather", {
 			this.updateDom(300);
 		} else if (notification === "CURRENT_WEATHER_OVERRIDE" && this.config.allowOverrideNotification) {
 			this.weatherProvider.notificationReceived(payload);
-		} else if (notification === "weather_toggle") {
-			const chartElement = document.getElementById("weather-chart");
-			if (chartElement.style.display === "none") {
-				chartElement.style.display = "block";
+		} else if (notification === "WEATHER_TOGGLE_FULL") {
+			if (this.showChart){
+				this.showChart = false; // Hide the chart
+            	document.getElementById("chartWrapper").style.display = "none"; // Hide canvas
 			} else {
-				chartElement.style.display = "none";
+				this.showChart = true; // Show the chart
+            	document.getElementById("chartWrapper").style.display = "block"; // Display canvas
+			}
+		} else if (notification === ("WEATHER_NEXT_PAGE" || "WEATHER_PREVIOUS_PAGE") ){
+			if (this.current_state === "hourly"){
+				this.current_state = "daily";
+				this.updateChartData();
+				drawChart();
+
+			} else if (this.current_state === "daily"){
+				this.current_state = "hourly";
+				this.updateChartData();
+				drawChart();
 			}
 		}
+
+	// 	} else if (notification === "SHOW_CHART") {
+    //         this.showChart = true; // Show the chart
+    //         document.getElementById("chartWrapper").style.display = "block"; // Display canvas
+    //     } else if (notification === "HIDE_CHART") {
+    //         this.showChart = false; // Hide the chart
+    //         document.getElementById("chartWrapper").style.display = "none"; // Hide canvas
+    //     }
+
 	},
 
 	// Select the template depending on the display type.
 	getTemplate () {
+
+		// this.createCanvas();
+
+		// this.drawChart();
+
 		switch (this.config.type.toLowerCase()) {
 			case "current":
 				return "current.njk";
@@ -178,20 +260,37 @@ Module.register("weather", {
 		const forecastData = this.weatherProvider.weatherForecast();
 		const hourlyData = this.weatherProvider.weatherHourly()?.filter((e, i) => (i + 1) % this.config.hourlyForecastIncrements === this.config.hourlyForecastIncrements - 1);
 
+		console.log('current:', currentData);
+		console.log('forecast:', forecastData);
+		console.log('hourly:', hourlyData);	
 		// Cập nhật chartData từ dữ liệu hourly
 		this.chartData.labels = [];
 		this.chartData.datasets[0].data = [];
 		// Initialize chartData if not already initialized
 		this.chartData = this.chartData || { labels: [], datasets: [{ data: [] }] };
-		// Ensure hourlyData is defined and an array before iterating
-		if (Array.isArray(hourlyData)) {
-			hourlyData.forEach((entry) => {
-				this.chartData.labels.push(formatTime(this.config, entry.date));
-				this.chartData.datasets[0].data.push(entry.temperature);  // Use "temperature" from hourly data
-			});
-		}
 
-		console.log('saved', this.chartData);
+		if(this.current_state === "hourly") {
+			// Ensure hourlyData is defined and an array before iterating
+			if (Array.isArray(hourlyData)) {
+				hourlyData.slice(0, 5).forEach((entry) => {
+					this.chartData.labels.push(formatTime(this.config, entry.date));
+					this.chartData.datasets[0].data.push(entry.temperature);  // Use "temperature" from hourly data
+				});
+			}
+		} else if (this.current_state === "daily"){
+			if (Array.isArray(currentData)) {
+				currentData.slice(0, 5).forEach((entry) => {
+					this.chartData.labels.push(formatTime(this.config, entry.date));
+					this.chartData.datasets[0].data.push(entry.temperature);  // Use "temperature" from hourly data
+				});
+			}
+		}
+		
+
+		console.log('X: ', this.chartData.labels);
+		console.log('Y: ', this.chartData.datasets[0].data);
+
+		// console.log("Saved data: ", this.chartData);
 
 		return {
 			config: this.config,
@@ -212,6 +311,8 @@ Module.register("weather", {
 		Log.log("New weather information available.");
 		this.updateDom(0);
 		this.scheduleUpdate();
+		// this.createCanvas();
+		
 
 		if (this.weatherProvider.currentWeather()) {
 			this.sendNotification("CURRENTWEATHER_TYPE", { type: this.weatherProvider.currentWeather().weatherType.replace("-", "_") });
@@ -230,7 +331,11 @@ Module.register("weather", {
 			locationName: this.weatherProvider?.fetchedLocationName,
 			providerName: this.weatherProvider.providerName
 		};
-
+		
+		console.log("Drawing");
+		// this.createCanvas();
+		// document.getElementById("chartWrapper").style.display = "block"; // Display canvas
+		this.drawChart();
 		this.sendNotification("WEATHER_UPDATED", notificationPayload);
 	},
 
@@ -240,7 +345,21 @@ Module.register("weather", {
 			nextLoad = delay;
 		}
 
+		this.updateChartData();
+
+		this.updateInterval = setInterval(() => {
+			console('Drawing');
+            this.updateChartData(); // Update chart data
+            if (this.showChart) {
+                this.drawChart(); // Draw chart if it's visible
+				
+            }
+        }, this.config.updateInterval);
+
 		setTimeout(() => {
+			this.weatherProvider.fetchWeatherHourly();
+			this.weatherProvider.fetchCurrentWeather();
+
 			switch (this.config.type.toLowerCase()) {
 				case "current":
 					this.weatherProvider.fetchCurrentWeather();
@@ -256,7 +375,15 @@ Module.register("weather", {
 					Log.error(`Invalid type ${this.config.type} configured (must be one of 'current', 'hourly', 'daily' or 'forecast')`);
 			}
 		}, nextLoad);
+
+		if (this.updateInterval) clearInterval(this.updateInterval); // Clear any previous intervals
+
 	},
+
+	updateChartData: function () {
+        const data = this.getTemplateData(); // Get new data
+        this.chartData = data.chartData; // Update chart data
+    },
 
 	roundValue (temperature) {
 		const decimals = this.config.roundTemp ? 0 : 1;

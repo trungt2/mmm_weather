@@ -1,0 +1,10 @@
+/* Chart wrapper in normal mode */
+#chartWrapper {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    display: none; /* Initially hidden */
+    background-color: white;
+    z-index: 1;
+}
+
