@@ -61,7 +61,9 @@ Module.register("weather", {
 	chartVisible: false,
 	showChart: false,
 	chart: null,
-	current_state: "daily",
+	current_state: "hourly",
+	minTemp: Number.POSITIVE_INFINITY, // Start with a very high value
+    maxTemp: Number.NEGATIVE_INFINITY, // Start with a very low value
 
 	// Can be used by the provider to display location of event if nothing else is specified
 	firstEvent: null,
@@ -151,7 +153,7 @@ Module.register("weather", {
         wrapper.appendChild(canvas);
 
         // Initially hide the wrapper
-        wrapper.style.display = "none";
+        wrapper.style.display = "block";
 
         document.body.appendChild(wrapper);
     },
@@ -171,7 +173,7 @@ Module.register("weather", {
                 options: {
                     legend: {display: true},
 					scales: {
-					yAxes: [{ticks: {min: -5, max:16}}],
+					yAxes: [{ticks: {min: this.minTemp, max:min.maxTemp}}],
 					}
                 },
             });
@@ -213,12 +215,12 @@ Module.register("weather", {
 			if (this.current_state === "hourly"){
 				this.current_state = "daily";
 				this.updateChartData();
-				drawChart();
+				this.drawChart();
 
 			} else if (this.current_state === "daily"){
 				this.current_state = "hourly";
 				this.updateChartData();
-				drawChart();
+				this.drawChart();
 			}
 		}
 	},
@@ -260,6 +262,12 @@ Module.register("weather", {
 				hourlyData.slice(0, 5).forEach((entry) => {
 					this.chartData.labels.push(formatTime(this.config, entry.date));
 					this.chartData.datasets[0].data.push(entry.temperature);  // Use "temperature" from hourly data
+
+					if(entry.maxTemperature > this.maxTemp)
+						this.maxTemp = entry.maxTemperature;
+
+					if(entry.mminTemperature < this.minTemp)
+						this.minTemp = entry.minTemperature;
 				});
 			}
 		} else if (this.current_state === "daily"){
