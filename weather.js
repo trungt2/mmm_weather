@@ -6,7 +6,7 @@ Module.register("weather", {
 		weatherProvider: "openweathermap",
 		roundTemp: false,
 		type: "current", // current, forecast, daily (equivalent to forecast), hourly (only with OpenWeatherMap /onecall endpoint)
-		lang: config.language,
+		lang: "vi",
 		units: config.units,
 		tempUnits: config.units,
 		windUnits: config.units,
@@ -59,9 +59,9 @@ Module.register("weather", {
 		}]
 	},
 	chartVisible: false,
-	showChart: true,
+	showChart: false,
 	chart: null,
-	current_state: "hourly",
+	current_state: "daily",
 
 	// Can be used by the provider to display location of event if nothing else is specified
 	firstEvent: null,
@@ -203,6 +203,7 @@ Module.register("weather", {
 		} else if (notification === "WEATHER_TOGGLE_FULL") {
 			if (this.showChart){
 				this.showChart = false; // Hide the chart
+				this.current_state = "hourly";
             	document.getElementById("chartWrapper").style.display = "none"; // Hide canvas
 			} else {
 				this.showChart = true; // Show the chart
@@ -220,24 +221,10 @@ Module.register("weather", {
 				drawChart();
 			}
 		}
-
-	// 	} else if (notification === "SHOW_CHART") {
-    //         this.showChart = true; // Show the chart
-    //         document.getElementById("chartWrapper").style.display = "block"; // Display canvas
-    //     } else if (notification === "HIDE_CHART") {
-    //         this.showChart = false; // Hide the chart
-    //         document.getElementById("chartWrapper").style.display = "none"; // Hide canvas
-    //     }
-
 	},
 
 	// Select the template depending on the display type.
 	getTemplate () {
-
-		// this.createCanvas();
-
-		// this.drawChart();
-
 		switch (this.config.type.toLowerCase()) {
 			case "current":
 				return "current.njk";
@@ -246,8 +233,6 @@ Module.register("weather", {
 			case "daily":
 			case "forecast":
 				return "forecast.njk";
-			case "chart":
-				return "chart.njk";
 			//Make the invalid values use the "Loading..." from forecast
 			default:
 				return "forecast.njk";
@@ -278,17 +263,17 @@ Module.register("weather", {
 				});
 			}
 		} else if (this.current_state === "daily"){
-			if (Array.isArray(currentData)) {
-				currentData.slice(0, 5).forEach((entry) => {
-					this.chartData.labels.push(formatTime(this.config, entry.date));
+			if (Array.isArray(forecastData)) {
+				forecastData.slice(0, 5).forEach((entry) => {
+					this.chartData.labels.push(this.formatDate(this.config, entry.date));
 					this.chartData.datasets[0].data.push(entry.temperature);  // Use "temperature" from hourly data
 				});
 			}
 		}
 		
 
-		console.log('X: ', this.chartData.labels);
-		console.log('Y: ', this.chartData.datasets[0].data);
+		console.log('Date: ', this.chartData.labels);
+		console.log('Temp: ', this.chartData.datasets[0].data);
 
 		// console.log("Saved data: ", this.chartData);
 
@@ -304,6 +289,14 @@ Module.register("weather", {
 			}
 		};
 	},
+
+	formatDate:function(config, dateString) {
+		const date = new Date(dateString);
+		// Adjust the format based on your region's preference
+		const options = { month: '2-digit', day: '2-digit' }; // e.g., "MM/DD"
+		return date.toLocaleDateString(config.locale || 'vi-VN', options);
+	},
+	
 	
 
 	// What to do when the weather provider has new information available?
@@ -357,8 +350,9 @@ Module.register("weather", {
         }, this.config.updateInterval);
 
 		setTimeout(() => {
-			this.weatherProvider.fetchWeatherHourly();
-			this.weatherProvider.fetchCurrentWeather();
+			
+			// console.log("Fetch current success");
+			// this.weatherProvider.fetchCurrentWeather();
 
 			switch (this.config.type.toLowerCase()) {
 				case "current":
@@ -370,6 +364,8 @@ Module.register("weather", {
 				case "daily":
 				case "forecast":
 					this.weatherProvider.fetchWeatherForecast();
+					console.log("Fectch hourly success");
+					this.weatherProvider.fetchWeatherHourly();
 					break;
 				default:
 					Log.error(`Invalid type ${this.config.type} configured (must be one of 'current', 'hourly', 'daily' or 'forecast')`);
